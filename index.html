@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
-<title>x0s | High-Res Engine</title>
+<title>x0s | Search Engine</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
@@ -25,9 +25,10 @@ input { flex: 1; background: transparent; border: none; outline: none; color: #f
 
 /* ── RESULTS ── */
 .results { flex: 1; overflow-y: auto; padding: 10px 16px; }
-.college-card { padding: 20px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.college-card { padding: 20px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+.college-card:active { background: #0c0c0c; }
 .c-name { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
-.c-id { font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; }
+.c-id { font-size: 0.7rem; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* ── VIEWER OVERLAY ── */
 .viewer {
@@ -44,21 +45,11 @@ input { flex: 1; background: transparent; border: none; outline: none; color: #f
 
 /* ── HIGH-RES SCROLL AREA ── */
 .pdf-scroll-wrap { 
-    flex: 1; 
-    overflow: auto; /* Native manual panning */
-    background: #050505; 
-    display: flex; 
-    justify-content: center; 
-    align-items: flex-start;
+    flex: 1; overflow: auto; background: #050505; 
+    display: flex; justify-content: center; align-items: flex-start;
     -webkit-overflow-scrolling: touch; 
 }
-canvas { 
-    background: #fff; 
-    margin: 20px auto; 
-    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-    max-width: 95%; /* Fits width by default, pan vertically */
-    height: auto;
-}
+canvas { background: #fff; margin: 20px auto; box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 95%; height: auto; }
 
 /* ── LOADER ── */
 #loader { 
@@ -73,13 +64,13 @@ canvas {
 
 <div id="loader">
   <div class="spinner"></div>
-  <div style="font-size: 0.65rem; color: var(--accent); letter-spacing: 0.3em; font-weight: 700;">CALIBRATING RESOLUTION</div>
+  <div style="font-size: 0.65rem; color: var(--accent); letter-spacing: 0.3em; font-weight: 700; text-transform: uppercase;">x0s Neural Scan</div>
 </div>
 
 <div class="header">
   <div class="search-input-wrap">
     <i class="fa-solid fa-magnifying-glass" style="color: var(--muted);"></i>
-    <input type="text" id="mainInput" placeholder="Search Colleges..." oninput="runSearch(this.value)">
+    <input type="text" id="mainInput" placeholder="Search or type #top10..." oninput="runSearch(this.value)">
   </div>
 </div>
 
@@ -101,11 +92,29 @@ const PDF_URL = 'Cutoff.pdf';
 const pdfjsLib = window['pdfjs-dist/build/pdf'];
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+/* ── TOP 10 ID MAPPING ── */
+const TOP_10_IDS = ['E005', 'E009', 'E003', 'E006', 'E001', 'E008', 'E007', 'E022', 'E021', 'E012'];
+
 function runSearch(val) {
   const q = val.toLowerCase().trim();
   const area = document.getElementById('resArea');
+  const colleges = window.XOS_COLLEGES || [];
+  
   if(!q) { area.innerHTML = ''; return; }
-  const matches = (window.XOS_COLLEGES || []).filter(c => c.name.toLowerCase().includes(q) || q === '#college');
+
+  let matches = [];
+  
+  if (q === '#top10') {
+    // Specifically filter and SORT based on the rank order defined above
+    matches = TOP_10_IDS.map(id => colleges.find(c => c.id === id)).filter(Boolean);
+  } else {
+    matches = colleges.filter(c => 
+      c.name.toLowerCase().includes(q) || 
+      c.id.toLowerCase().includes(q) || 
+      q === '#college'
+    );
+  }
+
   area.innerHTML = matches.map(c => `
     <div class="college-card" onclick="processPDF('${c.name.split(',')[0].trim()}')">
       <div class="c-id">${c.id}</div>
@@ -139,10 +148,7 @@ async function processPDF(name) {
     }
 
     const page = await pdf.getPage(foundPageNum);
-    
-    // CRITICAL: High-Res Rendering
-    // We render at scale 3.0 to keep text crisp on zoom
-    const scale = 3.0; 
+    const scale = 3.0; // High-Res renders
     const viewport = page.getViewport({ scale: scale });
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
@@ -150,13 +156,7 @@ async function processPDF(name) {
     canvas.height = viewport.height;
     canvas.width = viewport.width;
 
-    const renderContext = {
-      canvasContext: context,
-      viewport: viewport,
-      enableWebGL: true // Faster rendering
-    };
-
-    await page.render(renderContext).promise;
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
     area.appendChild(canvas);
 
     viewer.style.display = 'flex';
